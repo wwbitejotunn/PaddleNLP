@@ -108,6 +108,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         norm_eps: float = 1e-5,
         cross_attention_dim: int = 1280,
         attention_head_dim: int = 8,
+        resnet_pre_temb_non_linearity=True
     ):
         super().__init__()
 
@@ -133,6 +134,14 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         self.up_blocks = nn.LayerList([])
 
         # down
+
+        if act_fn == "swish":
+            self.down_resnet_temb_nonlinearity = lambda x: F.silu(x)
+        elif act_fn == "mish":
+            self.down_resnet_temb_nonlinearity = Mish()
+        elif act_fn == "silu":
+            self.down_resnet_temb_nonlinearity = nn.Silu()
+
         output_channel = block_out_channels[0]
         for i, down_block_type in enumerate(down_block_types):
             input_channel = output_channel
@@ -152,6 +161,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                 cross_attention_dim=cross_attention_dim,
                 attn_num_head_channels=attention_head_dim,
                 downsample_padding=downsample_padding,
+                resnet_pre_temb_non_linearity=resnet_pre_temb_non_linearity,
             )
             self.down_blocks.append(down_block)
 
@@ -166,6 +176,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
             cross_attention_dim=cross_attention_dim,
             attn_num_head_channels=attention_head_dim,
             resnet_groups=norm_num_groups,
+            resnet_pre_temb_non_linearity=resnet_pre_temb_non_linearity,
         )
 
         # count how many layers upsample the images
@@ -203,6 +214,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                 resnet_groups=norm_num_groups,
                 cross_attention_dim=cross_attention_dim,
                 attn_num_head_channels=attention_head_dim,
+                resnet_pre_temb_non_linearity=resnet_pre_temb_non_linearity,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
@@ -288,7 +300,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         timesteps = timestep
         if not paddle.is_tensor(timesteps):
             # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
-            timesteps = paddle.to_tensor([timesteps], dtype="int64")
+            timesteps = paddle.to_tensor([timesteps], dtype="float32")
         elif paddle.is_tensor(timesteps) and len(timesteps.shape) == 0:
             timesteps = timesteps[None]
 
@@ -310,24 +322,25 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
 
         # 3. down
         down_block_res_samples = (sample, )
+        down_nonlinear_temb=self.down_resnet_temb_nonlinearity(emb)
         for downsample_block in self.down_blocks:
             if hasattr(
                     downsample_block,
                     "attentions") and downsample_block.attentions is not None:
                 sample, res_samples = downsample_block(
                     hidden_states=sample,
-                    temb=emb,
+                    temb=down_nonlinear_temb,
                     encoder_hidden_states=encoder_hidden_states,
                 )
             else:
                 sample, res_samples = downsample_block(hidden_states=sample,
-                                                       temb=emb)
+                                                       temb=down_nonlinear_temb)
 
             down_block_res_samples += res_samples
 
         # 4. mid
         sample = self.mid_block(sample,
-                                emb,
+                                temb=down_nonlinear_temb,
                                 encoder_hidden_states=encoder_hidden_states)
 
         # 5. up
@@ -347,14 +360,14 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                        "attentions") and upsample_block.attentions is not None:
                 sample = upsample_block(
                     hidden_states=sample,
-                    temb=emb,
+                    temb=down_nonlinear_temb,
                     res_hidden_states_tuple=res_samples,
                     encoder_hidden_states=encoder_hidden_states,
                     upsample_size=upsample_size,
                 )
             else:
                 sample = upsample_block(hidden_states=sample,
-                                        temb=emb,
+                                        temb=down_nonlinear_temb,
                                         res_hidden_states_tuple=res_samples,
                                         upsample_size=upsample_size)
         # 6. post-process

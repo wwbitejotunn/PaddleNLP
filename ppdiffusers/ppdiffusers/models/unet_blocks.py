@@ -35,6 +35,7 @@ def get_down_block(
     resnet_groups=None,
     cross_attention_dim=None,
     downsample_padding=None,
+    resnet_pre_temb_non_linearity=False,
 ):
     down_block_type = down_block_type[7:] if down_block_type.startswith(
         "UNetRes") else down_block_type
@@ -49,6 +50,7 @@ def get_down_block(
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
             downsample_padding=downsample_padding,
+            resnet_pre_temb_non_linearity=resnet_pre_temb_non_linearity
         )
     elif down_block_type == "AttnDownBlock2D":
         return AttnDownBlock2D(
@@ -62,6 +64,7 @@ def get_down_block(
             resnet_groups=resnet_groups,
             downsample_padding=downsample_padding,
             attn_num_head_channels=attn_num_head_channels,
+            resnet_pre_temb_non_linearity=resnet_pre_temb_non_linearity
         )
     elif down_block_type == "CrossAttnDownBlock2D":
         if cross_attention_dim is None:
@@ -80,6 +83,7 @@ def get_down_block(
             downsample_padding=downsample_padding,
             cross_attention_dim=cross_attention_dim,
             attn_num_head_channels=attn_num_head_channels,
+            resnet_pre_temb_non_linearity=resnet_pre_temb_non_linearity
         )
     elif down_block_type == "SkipDownBlock2D":
         return SkipDownBlock2D(
@@ -91,6 +95,7 @@ def get_down_block(
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
             downsample_padding=downsample_padding,
+            resnet_pre_temb_non_linearity=resnet_pre_temb_non_linearity
         )
     elif down_block_type == "AttnSkipDownBlock2D":
         return AttnSkipDownBlock2D(
@@ -103,6 +108,7 @@ def get_down_block(
             resnet_act_fn=resnet_act_fn,
             downsample_padding=downsample_padding,
             attn_num_head_channels=attn_num_head_channels,
+            resnet_pre_temb_non_linearity=resnet_pre_temb_non_linearity
         )
     elif down_block_type == "DownEncoderBlock2D":
         return DownEncoderBlock2D(
@@ -114,6 +120,7 @@ def get_down_block(
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
             downsample_padding=downsample_padding,
+            resnet_pre_temb_non_linearity=resnet_pre_temb_non_linearity
         )
 
 
@@ -130,6 +137,7 @@ def get_up_block(
     attn_num_head_channels,
     resnet_groups=None,
     cross_attention_dim=None,
+    resnet_pre_temb_non_linearity=False,
 ):
     up_block_type = up_block_type[7:] if up_block_type.startswith(
         "UNetRes") else up_block_type
@@ -144,6 +152,7 @@ def get_up_block(
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
+            resnet_pre_temb_non_linearity=resnet_pre_temb_non_linearity
         )
     elif up_block_type == "CrossAttnUpBlock2D":
         if cross_attention_dim is None:
@@ -161,6 +170,7 @@ def get_up_block(
             resnet_groups=resnet_groups,
             cross_attention_dim=cross_attention_dim,
             attn_num_head_channels=attn_num_head_channels,
+            resnet_pre_temb_non_linearity=resnet_pre_temb_non_linearity
         )
     elif up_block_type == "AttnUpBlock2D":
         return AttnUpBlock2D(
@@ -174,6 +184,7 @@ def get_up_block(
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
             attn_num_head_channels=attn_num_head_channels,
+            resnet_pre_temb_non_linearity=resnet_pre_temb_non_linearity
         )
     elif up_block_type == "SkipUpBlock2D":
         return SkipUpBlock2D(
@@ -185,6 +196,7 @@ def get_up_block(
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
+            resnet_pre_temb_non_linearity=resnet_pre_temb_non_linearity
         )
     elif up_block_type == "AttnSkipUpBlock2D":
         return AttnSkipUpBlock2D(
@@ -197,6 +209,7 @@ def get_up_block(
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
             attn_num_head_channels=attn_num_head_channels,
+            resnet_pre_temb_non_linearity=resnet_pre_temb_non_linearity
         )
     elif up_block_type == "UpDecoderBlock2D":
         return UpDecoderBlock2D(
@@ -207,6 +220,7 @@ def get_up_block(
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
+            resnet_pre_temb_non_linearity=resnet_pre_temb_non_linearity
         )
     raise ValueError(f"{up_block_type} does not exist.")
 
@@ -227,6 +241,7 @@ class UNetMidBlock2D(nn.Layer):
         attn_num_head_channels=1,
         attention_type="default",
         output_scale_factor=1.0,
+        resnet_pre_temb_non_linearity=False,
         **kwargs,
     ):
         super().__init__()
@@ -248,6 +263,7 @@ class UNetMidBlock2D(nn.Layer):
                 non_linearity=resnet_act_fn,
                 output_scale_factor=output_scale_factor,
                 pre_norm=resnet_pre_norm,
+                pre_temb_non_linearity=resnet_pre_temb_non_linearity
             )
         ]
         attentions = []
@@ -273,6 +289,7 @@ class UNetMidBlock2D(nn.Layer):
                     non_linearity=resnet_act_fn,
                     output_scale_factor=output_scale_factor,
                     pre_norm=resnet_pre_norm,
+                    pre_temb_non_linearity=resnet_pre_temb_non_linearity
                 ))
 
         self.attentions = nn.LayerList(attentions)
@@ -307,6 +324,7 @@ class UNetMidBlock2DCrossAttn(nn.Layer):
         attention_type="default",
         output_scale_factor=1.0,
         cross_attention_dim=1280,
+        resnet_pre_temb_non_linearity=False,
         **kwargs,
     ):
         super().__init__()
@@ -355,6 +373,7 @@ class UNetMidBlock2DCrossAttn(nn.Layer):
                     non_linearity=resnet_act_fn,
                     output_scale_factor=output_scale_factor,
                     pre_norm=resnet_pre_norm,
+                    pre_temb_non_linearity=resnet_pre_temb_non_linearity
                 ))
 
         self.attentions = nn.LayerList(attentions)
@@ -403,6 +422,7 @@ class AttnDownBlock2D(nn.Layer):
         output_scale_factor=1.0,
         downsample_padding=1,
         add_downsample=True,
+        resnet_pre_temb_non_linearity=False,
     ):
         super().__init__()
         resnets = []
@@ -424,6 +444,7 @@ class AttnDownBlock2D(nn.Layer):
                     non_linearity=resnet_act_fn,
                     output_scale_factor=output_scale_factor,
                     pre_norm=resnet_pre_norm,
+                    pre_temb_non_linearity=resnet_pre_temb_non_linearity
                 ))
             attentions.append(
                 AttentionBlock(
@@ -485,6 +506,7 @@ class CrossAttnDownBlock2D(nn.Layer):
         output_scale_factor=1.0,
         downsample_padding=1,
         add_downsample=True,
+        resnet_pre_temb_non_linearity=False,
     ):
         super().__init__()
         resnets = []
@@ -495,6 +517,7 @@ class CrossAttnDownBlock2D(nn.Layer):
 
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
+
             resnets.append(
                 ResnetBlock2D(
                     in_channels=in_channels,
@@ -507,6 +530,7 @@ class CrossAttnDownBlock2D(nn.Layer):
                     non_linearity=resnet_act_fn,
                     output_scale_factor=output_scale_factor,
                     pre_norm=resnet_pre_norm,
+                    pre_temb_non_linearity=resnet_pre_temb_non_linearity
                 ))
             attentions.append(
                 SpatialTransformer(
@@ -560,7 +584,6 @@ class CrossAttnDownBlock2D(nn.Layer):
                         return module(*inputs)
 
                     return custom_forward
-
                 hidden_states = recompute(create_custom_forward(resnet),
                                           hidden_states, temb)
                 hidden_states = recompute(create_custom_forward(attn),
@@ -598,6 +621,7 @@ class DownBlock2D(nn.Layer):
         output_scale_factor=1.0,
         add_downsample=True,
         downsample_padding=1,
+        resnet_pre_temb_non_linearity=False,
     ):
         super().__init__()
         resnets = []
@@ -616,6 +640,7 @@ class DownBlock2D(nn.Layer):
                     non_linearity=resnet_act_fn,
                     output_scale_factor=output_scale_factor,
                     pre_norm=resnet_pre_norm,
+                    pre_temb_non_linearity=resnet_pre_temb_non_linearity
                 ))
 
         self.resnets = nn.LayerList(resnets)
@@ -678,6 +703,7 @@ class DownEncoderBlock2D(nn.Layer):
         output_scale_factor=1.0,
         add_downsample=True,
         downsample_padding=1,
+        resnet_pre_temb_non_linearity=False,
     ):
         super().__init__()
         resnets = []
@@ -696,6 +722,7 @@ class DownEncoderBlock2D(nn.Layer):
                     non_linearity=resnet_act_fn,
                     output_scale_factor=output_scale_factor,
                     pre_norm=resnet_pre_norm,
+                    pre_temb_non_linearity=resnet_pre_temb_non_linearity
                 ))
 
         self.resnets = nn.LayerList(resnets)
@@ -739,6 +766,7 @@ class AttnDownEncoderBlock2D(nn.Layer):
         output_scale_factor=1.0,
         add_downsample=True,
         downsample_padding=1,
+        resnet_pre_temb_non_linearity=False,
     ):
         super().__init__()
         resnets = []
@@ -758,6 +786,7 @@ class AttnDownEncoderBlock2D(nn.Layer):
                     non_linearity=resnet_act_fn,
                     output_scale_factor=output_scale_factor,
                     pre_norm=resnet_pre_norm,
+                    pre_temb_non_linearity=resnet_pre_temb_non_linearity
                 ))
             attentions.append(
                 AttentionBlock(
@@ -812,6 +841,7 @@ class AttnSkipDownBlock2D(nn.Layer):
         output_scale_factor=np.sqrt(2.0),
         downsample_padding=1,
         add_downsample=True,
+        resnet_pre_temb_non_linearity=False,
     ):
         super().__init__()
         self.attentions = nn.LayerList([])
@@ -834,6 +864,7 @@ class AttnSkipDownBlock2D(nn.Layer):
                     non_linearity=resnet_act_fn,
                     output_scale_factor=output_scale_factor,
                     pre_norm=resnet_pre_norm,
+                    pre_temb_non_linearity=resnet_pre_temb_non_linearity
                 ))
             self.attentions.append(
                 AttentionBlock(
@@ -858,6 +889,7 @@ class AttnSkipDownBlock2D(nn.Layer):
                 use_in_shortcut=True,
                 down=True,
                 kernel="fir",
+                pre_temb_non_linearity=resnet_pre_temb_non_linearity
             )
             self.downsamplers = nn.LayerList(
                 [FirDownsample2D(in_channels, out_channels=out_channels)])
@@ -906,6 +938,7 @@ class SkipDownBlock2D(nn.Layer):
         output_scale_factor=np.sqrt(2.0),
         add_downsample=True,
         downsample_padding=1,
+        resnet_pre_temb_non_linearity=False,
     ):
         super().__init__()
         self.resnets = nn.LayerList([])
@@ -925,6 +958,7 @@ class SkipDownBlock2D(nn.Layer):
                     non_linearity=resnet_act_fn,
                     output_scale_factor=output_scale_factor,
                     pre_norm=resnet_pre_norm,
+                    pre_temb_non_linearity=resnet_pre_temb_non_linearity
                 ))
 
         if add_downsample:
@@ -942,6 +976,7 @@ class SkipDownBlock2D(nn.Layer):
                 use_in_shortcut=True,
                 down=True,
                 kernel="fir",
+                pre_temb_non_linearity=resnet_pre_temb_non_linearity
             )
             self.downsamplers = nn.LayerList(
                 [FirDownsample2D(in_channels, out_channels=out_channels)])
@@ -992,6 +1027,7 @@ class AttnUpBlock2D(nn.Layer):
         attn_num_head_channels=1,
         output_scale_factor=1.0,
         add_upsample=True,
+        resnet_pre_temb_non_linearity=False,
     ):
         super().__init__()
         resnets = []
@@ -1016,6 +1052,7 @@ class AttnUpBlock2D(nn.Layer):
                     non_linearity=resnet_act_fn,
                     output_scale_factor=output_scale_factor,
                     pre_norm=resnet_pre_norm,
+                    pre_temb_non_linearity=resnet_pre_temb_non_linearity
                 ))
             attentions.append(
                 AttentionBlock(
@@ -1077,6 +1114,7 @@ class CrossAttnUpBlock2D(nn.Layer):
         output_scale_factor=1.0,
         downsample_padding=1,
         add_upsample=True,
+        resnet_pre_temb_non_linearity=False,
     ):
         super().__init__()
         resnets = []
@@ -1102,6 +1140,7 @@ class CrossAttnUpBlock2D(nn.Layer):
                     non_linearity=resnet_act_fn,
                     output_scale_factor=output_scale_factor,
                     pre_norm=resnet_pre_norm,
+                    pre_temb_non_linearity=resnet_pre_temb_non_linearity
                 ))
             attentions.append(
                 SpatialTransformer(
@@ -1200,6 +1239,7 @@ class UpBlock2D(nn.Layer):
         resnet_pre_norm: bool = True,
         output_scale_factor=1.0,
         add_upsample=True,
+        resnet_pre_temb_non_linearity=False,
     ):
         super().__init__()
         resnets = []
@@ -1221,6 +1261,7 @@ class UpBlock2D(nn.Layer):
                     non_linearity=resnet_act_fn,
                     output_scale_factor=output_scale_factor,
                     pre_norm=resnet_pre_norm,
+                    pre_temb_non_linearity=resnet_pre_temb_non_linearity
                 ))
 
         self.resnets = nn.LayerList(resnets)
@@ -1284,6 +1325,7 @@ class UpDecoderBlock2D(nn.Layer):
         resnet_pre_norm: bool = True,
         output_scale_factor=1.0,
         add_upsample=True,
+        resnet_pre_temb_non_linearity=False,
     ):
         super().__init__()
         resnets = []
@@ -1303,6 +1345,7 @@ class UpDecoderBlock2D(nn.Layer):
                     non_linearity=resnet_act_fn,
                     output_scale_factor=output_scale_factor,
                     pre_norm=resnet_pre_norm,
+                    pre_temb_non_linearity=resnet_pre_temb_non_linearity
                 ))
 
         self.resnets = nn.LayerList(resnets)
@@ -1343,6 +1386,7 @@ class AttnUpDecoderBlock2D(nn.Layer):
         attn_num_head_channels=1,
         output_scale_factor=1.0,
         add_upsample=True,
+        resnet_pre_temb_non_linearity=False,
     ):
         super().__init__()
         resnets = []
@@ -1371,6 +1415,7 @@ class AttnUpDecoderBlock2D(nn.Layer):
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
                     num_groups=resnet_groups,
+                    pre_temb_non_linearity=resnet_pre_temb_non_linearity
                 ))
 
         self.attentions = nn.LayerList(attentions)
@@ -1416,6 +1461,7 @@ class AttnSkipUpBlock2D(nn.Layer):
         output_scale_factor=np.sqrt(2.0),
         upsample_padding=1,
         add_upsample=True,
+        resnet_pre_temb_non_linearity=False,
     ):
         super().__init__()
         self.attentions = nn.LayerList([])
@@ -1441,6 +1487,7 @@ class AttnSkipUpBlock2D(nn.Layer):
                     non_linearity=resnet_act_fn,
                     output_scale_factor=output_scale_factor,
                     pre_norm=resnet_pre_norm,
+                    pre_temb_non_linearity=resnet_pre_temb_non_linearity
                 ))
 
         self.attentions.append(
@@ -1468,6 +1515,7 @@ class AttnSkipUpBlock2D(nn.Layer):
                 use_in_shortcut=True,
                 up=True,
                 kernel="fir",
+                pre_temb_non_linearity=resnet_pre_temb_non_linearity
             )
             self.skip_conv = nn.Conv2D(out_channels,
                                        3,
@@ -1534,6 +1582,7 @@ class SkipUpBlock2D(nn.Layer):
         output_scale_factor=np.sqrt(2.0),
         add_upsample=True,
         upsample_padding=1,
+        resnet_pre_temb_non_linearity=False,
     ):
         super().__init__()
         self.resnets = nn.LayerList([])
@@ -1557,6 +1606,7 @@ class SkipUpBlock2D(nn.Layer):
                     non_linearity=resnet_act_fn,
                     output_scale_factor=output_scale_factor,
                     pre_norm=resnet_pre_norm,
+                    pre_temb_non_linearity=resnet_pre_temb_non_linearity
                 ))
 
         self.upsampler = FirUpsample2D(in_channels, out_channels=out_channels)
@@ -1576,6 +1626,7 @@ class SkipUpBlock2D(nn.Layer):
                 use_in_shortcut=True,
                 up=True,
                 kernel="fir",
+                pre_temb_non_linearity=resnet_pre_temb_non_linearity
             )
             self.skip_conv = nn.Conv2D(out_channels,
                                        3,

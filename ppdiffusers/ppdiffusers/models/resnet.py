@@ -387,8 +387,10 @@ class ResnetBlock2D(nn.Layer):
         use_in_shortcut=None,
         up=False,
         down=False,
+        pre_temb_non_linearity=False
     ):
         super().__init__()
+        self.pre_temb_non_linearity=pre_temb_non_linearity
         self.pre_norm = pre_norm
         self.pre_norm = True
         self.in_channels = in_channels
@@ -434,7 +436,6 @@ class ResnetBlock2D(nn.Layer):
             self.nonlinearity = Mish()
         elif non_linearity == "silu":
             self.nonlinearity = nn.Silu()
-
         self.upsample = self.downsample = None
         if self.up:
             if kernel == "fir":
@@ -484,7 +485,10 @@ class ResnetBlock2D(nn.Layer):
         hidden_states = self.conv1(hidden_states)
 
         if temb is not None:
-            temb = self.time_emb_proj(self.nonlinearity(temb))[:, :, None, None]
+            if self.pre_temb_non_linearity==False:
+                temb = self.time_emb_proj(self.nonlinearity(temb))[:, :, None, None]
+            else:
+                temb = self.time_emb_proj(temb)[:, :, None, None]
             hidden_states = hidden_states + temb
 
         hidden_states = self.norm2(hidden_states)
