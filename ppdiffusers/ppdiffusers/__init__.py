@@ -48,6 +48,7 @@ if is_paddle_available():
     from .pipelines import DDIMPipeline, DDPMPipeline, KarrasVePipeline, LDMPipeline, LDMSuperResolutionPipeline, PNDMPipeline, ScoreSdeVePipeline
     from .schedulers import (
         EulerAncestralDiscreteScheduler,
+        EulerAncestralDiscreteSchedulerStatic,
         DDIMScheduler,
         DDPMScheduler,
         DPMSolverMultistepScheduler,
@@ -62,6 +63,7 @@ else:
 
 if is_paddle_available() and is_scipy_available():
     from .schedulers import LMSDiscreteScheduler
+    from .schedulers import LMSDiscreteSchedulerDirect
 else:
     from .utils.dummy_paddle_and_scipy_objects import *  # noqa F403
 

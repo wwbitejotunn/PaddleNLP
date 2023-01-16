@@ -17,6 +17,7 @@ from ..utils import is_scipy_available, is_paddle_available
 
 if is_paddle_available():
     from .scheduling_euler_ancestral_discrete import EulerAncestralDiscreteScheduler
+    from .static_scheduling_euler_ancestral_discrete import EulerAncestralDiscreteSchedulerStatic
     from .scheduling_ddim import DDIMScheduler
     from .scheduling_ddpm import DDPMScheduler
     from .scheduling_dpmsolver_multistep import DPMSolverMultistepScheduler
@@ -30,5 +31,6 @@ else:
 
 if is_scipy_available() and is_paddle_available():
     from .scheduling_lms_discrete import LMSDiscreteScheduler
+    from .scheduling_lms_discrete_directCall import LMSDiscreteSchedulerDirect
 else:
     from ..utils.dummy_paddle_and_scipy_objects import *  # noqa F403
