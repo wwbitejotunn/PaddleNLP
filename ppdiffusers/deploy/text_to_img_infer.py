@@ -99,14 +99,15 @@ def create_paddle_inference_runtime(
     model_dir, model_prefix, use_trt=False, dynamic_shape=None, use_fp16=False, device_id=0, disable_paddle_trt_ops=[]
     , stream=None):
     option = fd.RuntimeOption()
-    if(stream is not None):
-        option.set_external_stream(stream)
     # option.enable_paddle_log_info()
     option.use_paddle_backend()
     if device_id == -1:
         option.use_cpu()
     else:
         option.use_gpu(device_id)
+    if(stream is not None):
+        option._option.set_external_raw_stream(int(stream))
+
     if use_trt:
         option.disable_paddle_trt_ops(disable_paddle_trt_ops)
         option.use_trt_backend()
@@ -209,7 +210,8 @@ if __name__ == "__main__":
     # 1. Init scheduler
     # stream 105 looks likes is the default stream of fd
     # TODO set stream for paddle
-    stream_paddle=paddle.device.cuda.current_stream(device_id)
+    stream_paddle=paddle.device.cuda.current_stream(device_id).cuda_stream
+    # import pdb;pdb.set_trace()
     scheduler = get_scheduler(args)
 
     # 2. Init tokenizer
