@@ -57,7 +57,7 @@ def convert_ppdiffusers_pipeline_to_fastdeploy_pipeline(model_path: str, output_
         pipeline.unet,
         input_spec=[
             paddle.static.InputSpec(shape=[None, unet_channels, None, None], dtype="float32", name="sample"),  # sample
-            paddle.static.InputSpec(shape=[1], dtype="int64", name="timestep"),  # timestep
+            paddle.static.InputSpec(shape=[1], dtype="float32", name="timestep"),  # timestep
             paddle.static.InputSpec(
                 shape=[None, None, cross_attention_dim], dtype="float32", name="encoder_hidden_states"
             ),  # encoder_hidden_states

@@ -376,31 +376,49 @@ class FastDeployStableDiffusionPipeline(DiffusionPipeline):
             text_embeddings = paddle.to_tensor(text_embeddings, dtype="float32")
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
+                noise_pred_unet = paddle.zeros([2 * batch_size * num_images_per_prompt, 4, height // 8,
+                                                width // 8],dtype='float32')
                 latent_model_input = paddle.concat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-                # predict the noise residual
-                # input1 = fd.C.FDTensor()
-                # input2 = fd.C.FDTensor()
-                # input3 = fd.C.FDTensor()
-                # input1.from_numpy(latent_model_input.numpy().astype(np.float32), False)
-                # input2.from_numpy(np.array(t, dtype=np.int64), False)
-                # input3.from_numpy(text_embeddings.astype(np.float32), False)
-                dlpack1 = paddle.utils.dlpack.to_dlpack(latent_model_input)
-                dlpack2 = paddle.utils.dlpack.to_dlpack(t)
-                dlpack3 = paddle.utils.dlpack.to_dlpack(text_embeddings)
-                sample = fd.C.FDTensor.from_dlpack("sample", dlpack1)
-                timestep = fd.C.FDTensor.from_dlpack("timestep", dlpack2)
-                encoder_hidden_states = fd.C.FDTensor.from_dlpack("encoder_hidden_states", dlpack3)
+                sample = fd.C.FDTensor.from_external_data("sample", 
+                                                         latent_model_input.data_ptr(),
+                                                         latent_model_input.shape,
+                                                         'float32',
+                                                         'CUDA',
+                                                          latent_model_input.place.gpu_device_id())
+                timestep = fd.C.FDTensor.from_external_data("timestep", 
+                                                            t.data_ptr(),
+                                                            t.shape,
+                                                            'float32',
+                                                            'CUDA',
+                                                            t.place.gpu_device_id())
+                encoder_hidden_states = fd.C.FDTensor.from_external_data("encoder_hidden_states", 
+                                                            text_embeddings.data_ptr(),
+                                                            text_embeddings.shape,
+                                                            'float32',
+                                                            'CUDA',
+                                                            text_embeddings.place.gpu_device_id())
+                
+                noise_pred_fd = fd.C.FDTensor.from_external_data("encoder_hidden_states", 
+                                                            noise_pred_unet.data_ptr(),
+                                                            noise_pred_unet.shape,
+                                                            'float32',
+                                                            'CUDA',
+                                                            noise_pred_unet.place.gpu_device_id())
+                                
                 unet.bind_input_tensor("sample", sample)
                 unet.bind_input_tensor("timestep", timestep)
                 unet.bind_input_tensor("encoder_hidden_states", encoder_hidden_states)
+
+                
+                unet.bind_output_tensor(unet_output_name, noise_pred_fd)
+
                 unet.zero_copy_infer()
-                noise_pred = unet.get_output_tensor(unet_output_name)
-                dlpack = noise_pred.to_dlpack()
-                noise_pred = paddle.utils.dlpack.from_dlpack(dlpack)
+                # import pdb;pdb.set_trace()
                 # perform guidance
+                # paddle.device.cuda.synchronize()
                 if do_classifier_free_guidance:
-                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                    noise_pred_uncond, noise_pred_text = noise_pred_unet.chunk(2)
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1

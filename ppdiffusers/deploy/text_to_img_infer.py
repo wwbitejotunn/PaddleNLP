@@ -97,8 +97,11 @@ def create_ort_runtime(model_dir, model_prefix, model_format, device_id=0):
 
 def create_paddle_inference_runtime(
     model_dir, model_prefix, use_trt=False, dynamic_shape=None, use_fp16=False, device_id=0, disable_paddle_trt_ops=[]
-):
+    , stream=None):
     option = fd.RuntimeOption()
+    if(stream is not None):
+        option.set_external_stream(stream)
+    # option.enable_paddle_log_info()
     option.use_paddle_backend()
     if device_id == -1:
         option.use_cpu()
@@ -204,12 +207,22 @@ if __name__ == "__main__":
     else:
         paddle.set_device(f"gpu:{device_id}")
     # 1. Init scheduler
+    # stream 105 looks likes is the default stream of fd
+    # TODO set stream for paddle
+    stream_paddle=paddle.device.cuda.current_stream(device_id)
     scheduler = get_scheduler(args)
 
     # 2. Init tokenizer
     tokenizer = CLIPTokenizer.from_pretrained(os.path.join(args.model_dir, "tokenizer"))
 
     # 3. Set dynamic shape for trt backend
+    text_encoder_dynamic_shape = {
+        "input_ids" : {
+            "min_shape": [1, 77],
+            "max_shape": [2, 77],
+            "opt_shape": [2, 77],
+        }
+    }
     vae_dynamic_shape = {
         "latent_sample": {
             "min_shape": [1, 4, 64, 64],
@@ -252,8 +265,14 @@ if __name__ == "__main__":
     elif args.backend == "paddle" or args.backend == "paddle_tensorrt":
         use_trt = True if args.backend == "paddle_tensorrt" else False
         # Note(zhoushunjie): Will change to paddle-trt runtime later
-        text_encoder_runtime = create_ort_runtime(
-            args.model_dir, args.text_encoder_model_prefix, args.model_format, device_id=device_id
+        text_encoder_runtime = create_paddle_inference_runtime(
+            args.model_dir, args.text_encoder_model_prefix,             
+            use_trt,
+            text_encoder_dynamic_shape,
+            use_fp16=args.use_fp16,
+            device_id=device_id,
+            disable_paddle_trt_ops=["arg_max","range"],
+            stream=stream_paddle,
         )
         vae_decoder_runtime = create_paddle_inference_runtime(
             args.model_dir,
@@ -262,6 +281,7 @@ if __name__ == "__main__":
             vae_dynamic_shape,
             use_fp16=args.use_fp16,
             device_id=device_id,
+            stream=stream_paddle,
         )
         start = time.time()
         unet_runtime = create_paddle_inference_runtime(
@@ -272,6 +292,7 @@ if __name__ == "__main__":
             use_fp16=args.use_fp16,
             device_id=args.device_id,
             disable_paddle_trt_ops=["sin", "cos"],
+            stream=stream_paddle,
         )
         print(f"Spend {time.time() - start : .2f} s to load unet model.")
     elif args.backend == "tensorrt":
