@@ -1050,6 +1050,7 @@ class GenerationMixin(object):
             model_inputs = self.prepare_inputs_for_generation(input_ids, **model_kwargs)
             outputs = self(**model_inputs)
             logits = outputs[0] if isinstance(outputs, tuple) else outputs
+            # logits = outputs[0] if isinstance(outputs, tuple) else outputs.logits
             # [batch_size, vocab_size]
             logits = logits[:, -1, :]
 
@@ -1132,7 +1133,10 @@ class GenerationMixin(object):
             return self(**model_inputs, **immutable)
 
         def _post_process_(outputs, input_ids, cur_len, origin_len, scores, unfinished_flag, model_kwargs):
+            # import pdb;pdb.set_trace()
+            # logits = outputs[0]
             logits = outputs[0] if isinstance(outputs, tuple) else outputs
+            # logits = outputs[0] if isinstance(outputs, tuple) else outputs.logits
 
             # [batch_size, vocab_size]
             logits = logits[:, -1, :]
@@ -1175,6 +1179,8 @@ class GenerationMixin(object):
             )
             return input_ids, scores, unfinished_flag, model_kwargs
 
+        max_length = paddle.full([1], max_length, dtype="int64")
+        model_kwargs["max_length"] = max_length
         outputs = _forward_(**model_kwargs)
         input_ids, scores, unfinished_flag, model_kwargs = _post_process_(
             outputs, input_ids, cur_len_gpu, origin_len_gpu, scores, unfinished_flag, model_kwargs
@@ -1186,8 +1192,10 @@ class GenerationMixin(object):
         attn_mask = model_kwargs["attention_mask"]
         # make the shape of attention_mask = (-1, -1, -1, -1) in dy2static.
         model_kwargs["attention_mask"] = paddle.reshape(attn_mask, paddle.shape(attn_mask))
+        # import pdb;pdb.set_trace()
         model_kwargs["cache"] = outputs[1] if isinstance(outputs, tuple) else None
-        max_length = paddle.full([1], max_length, dtype="int64")
+        # model_kwargs["cache"] = outputs[1]
+        
 
         while cur_len < max_length:
             input_ids, scores, unfinished_flag, model_kwargs = _post_process_(

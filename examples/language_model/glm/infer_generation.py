@@ -23,7 +23,8 @@ def parse_arguments():
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_path", required=True, help="The directory of model.")
+    # parser.add_argument("--model_path", required=True, help="The directory of model.")
+    parser.add_argument("--model_path", default="/root/paddlejob/workspace/env_run/fhq/models/glm/checkpoint-100/", help="The directory of model.")
     parser.add_argument("--model_prefix", type=str, default="model", help="The model and params file prefix.")
     parser.add_argument(
         "--device",

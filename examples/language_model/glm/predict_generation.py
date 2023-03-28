@@ -21,7 +21,8 @@ def parse_arguments():
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_path", required=True, help="The directory of model.")
+    # parser.add_argument("--model_path", required=True, help="The directory of model.")
+    parser.add_argument("--model_path", default="/root/paddlejob/workspace/env_run/fhq/models/glm/checkpoint-100/", help="The directory of model.")
     parser.add_argument("--batch_size", type=int, default=2, help="The batch size of data.")
     parser.add_argument("--src_length", type=int, default=200, help="The batch size of data.")
     parser.add_argument("--tgt_length", type=int, default=20, help="The batch size of data.")
@@ -90,6 +91,12 @@ class Predictor(object):
 
 
 if __name__ == "__main__":
+    import random
+    import numpy as np
+    paddle.seed(100)
+    random.seed(100)
+    np.random.seed(100)
+    
     args = parse_arguments()
     predictor = Predictor(args)
     all_texts = [
