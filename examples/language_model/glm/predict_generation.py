@@ -44,6 +44,7 @@ class Predictor(object):
         self.batch_size = args.batch_size
         self.args = args
         self.model = AutoModelForConditionalGeneration.from_pretrained(args.model_path)
+        self.model.glm.init_weight_fuse_mt()
         self.model.eval()
 
     def preprocess(self, input_text):
