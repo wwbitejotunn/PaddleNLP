@@ -463,8 +463,8 @@ class GLMStack(nn.Layer):
 
         all_hidden_states = [hidden_states.detach()]
         if self.fuse_mt:
-            # if not self.is_init:
-            self.process_weight_for_fustmt()
+            if not self.is_init:
+                self.process_weight_for_fustmt()
             attention_mask = (1 - attention_mask) * (-10000)
             # attention_mask = paddle.zeros(attention_mask.shape)
             attention_mask = attention_mask.astype(hidden_states.dtype)
@@ -503,6 +503,7 @@ class GLMStack(nn.Layer):
             # output = self.final_layernorm(hidden_states)
             # new_cache_kvs = all_cache_kvs
             if cache:
+                import pdb;pdb.set_trace()
                 hidden_states, new_cache_kvs = fused_multi_transformer(
                     hidden_states,
                     self.ln_scales,
@@ -552,10 +553,6 @@ class GLMStack(nn.Layer):
                     activation="gelu",
                     trans_qkvw=False,
                 )
-            # if DEBUG:
-            #     print("final_out:",final_out)
-            #     print("cache_kv[0]", new_cache_kvs[0][0,0,0,:,0])
-            #     print("cache_kv[-1]", new_cache_kvs[-1][0,0,0,:,0])
             # 2, batch, num_head, seq_len, head_dim
             if DEBUG:
                 for i in range(len(new_cache_kvs)):
@@ -577,7 +574,7 @@ class GLMStack(nn.Layer):
         for i, layer in enumerate(self.layers):
             # if i == 0 and DEBUG:
             #     print(attention_mask)
-            self.layers[i].attention.query_key_value.bias.set_value(np.zeros(self.layers[i].attention.query_key_value.bias.shape, dtype=np.float32))
+            # self.layers[i].attention.query_key_value.bias.set_value(np.zeros(self.layers[i].attention.query_key_value.bias.shape, dtype=np.float32))
             # self.layers[i].attention.dense.bias.set_value(np.zeros(self.layers[i].attention.dense.bias.shape, dtype=np.float32))
 
             mem_i = cache[i] if cache is not None else None
@@ -896,7 +893,7 @@ class GLMModel(GLMPretrainedModel):
             )
 
         self.transformer = GLMStack(config)
-        self.apply(self.init_weights)
+        # self.apply(self.init_weights)
 
     def get_input_embeddings(self):
         return self.word_embeddings
@@ -1057,7 +1054,7 @@ class GLMForConditionalGeneration(GLMPretrainedModel):
         
         for _ in range(num_layers):
             # import pdb;pdb.set_trace()
-            cache_kv = paddle.zeros(cache_kv_size, dtype=paddle.get_default_dtype())
+            cache_kv = -10000 * paddle.ones(cache_kv_size, dtype=paddle.get_default_dtype())
             cache_kvs.append(cache_kv)
         return cache_kvs
 
@@ -1070,7 +1067,7 @@ class GLMForConditionalGeneration(GLMPretrainedModel):
         max_length: Tensor = None,
         **kwargs
     ):
-        max_length = 200
+        max_length = 110
 
         attention_mask_gen = attention_mask
         batch = input_ids.shape[0]
@@ -1088,12 +1085,12 @@ class GLMForConditionalGeneration(GLMPretrainedModel):
             time_step = self.time_step
             
             # [batch, 1, src_length, tgt_length]
-            extended_shape = attention_mask_gen.shape
-            extended_shape[-1] = max_length
-            attention_mask_gen_extend = paddle.zeros(extended_shape, dtype=attention_mask.dtype)
-            attention_mask_gen_extend[:,:,:,:seq_length] = attention_mask_gen
-            if FUSE_MT:
-                attention_mask_gen = attention_mask_gen_extend
+            # extended_shape = attention_mask_gen.shape
+            # extended_shape[-1] = max_length
+            # attention_mask_gen_extend = paddle.zeros(extended_shape, dtype=attention_mask.dtype)
+            # attention_mask_gen_extend[:,:,:,:seq_length] = attention_mask_gen
+            # if FUSE_MT:
+            #     attention_mask_gen = attention_mask_gen_extend
 
             print("generation start")
         # context stage
@@ -1108,6 +1105,9 @@ class GLMForConditionalGeneration(GLMPretrainedModel):
                 
                 cache = self._generate_cache(batch_size=batch, max_length=max_length)
             print("context start")
+            self.time_step = input_ids.shape[1]
+            paddle.increment(self.time_step, -1)
+            # paddle.assign(self.time_step, seq_length - 1)
         # extended_shape = attention_mask.shape
         # extended_shape[-1] = max_length
         # if extended_shape[-2] > 1:
