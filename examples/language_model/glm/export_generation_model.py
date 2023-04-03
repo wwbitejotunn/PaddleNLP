@@ -50,8 +50,9 @@ def parse_args():
 
 def main():
     args = parse_args()
-
-    tokenizer = AutoTokenizer.from_pretrained(args.model_path)
+    token_path = "/root/.paddlenlp/models/THUDM/glm-10b-chinese"
+    
+    tokenizer = AutoTokenizer.from_pretrained(token_path)
     model = AutoModelForConditionalGeneration.from_pretrained(args.model_path)
 
     model.eval()

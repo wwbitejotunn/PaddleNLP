@@ -15,16 +15,16 @@
 
 ```
 python -m paddle.distributed.launch --gpus "0,1,2,3" finetune_generation.py \
---model_name_or_path THUDM/glm-large-chinese \
+--model_name_or_path THUDM/glm-10b-chinese \
 --num_train_epochs 4 \
 --learning_rate 3e-5 \
 --warmup_ratio 0.06 \
 --weight_decay 0.1 \
 --label_smoothing 0.1 \
---save_steps 10000 \
+--save_steps 1000 \
 --logging_steps 1 \
 --eval_steps 4 \
---output_dir ./checkpoints/glm-large-chinese \
+--output_dir ./checkpoints/glm-10b-chinese \
 --src_length 608 \
 --tgt_length 160 \
 --min_tgt_length 55 \

@@ -416,7 +416,6 @@ class GLMStack(nn.Layer):
         return_dict: bool = False,
     ):
         batch_size, query_length = hidden_states.shape[:2]
-        # import pdb;pdb.set_trace()
         # print(cache[0])
         memory_length = cache[0].shape[1] if cache is not None else 0
 
@@ -503,7 +502,6 @@ class GLMStack(nn.Layer):
             # output = self.final_layernorm(hidden_states)
             # new_cache_kvs = all_cache_kvs
             if cache:
-                import pdb;pdb.set_trace()
                 hidden_states, new_cache_kvs = fused_multi_transformer(
                     hidden_states,
                     self.ln_scales,
@@ -1030,6 +1028,7 @@ class GLMForConditionalGeneration(GLMPretrainedModel):
 
         self.cache_kvs = []
         self.glm = GLMModel(config)
+        self.config = config
         self.apply(self.init_weights)
 
     def _reorder_cache(self, cache, beam_index):
@@ -1044,9 +1043,12 @@ class GLMForConditionalGeneration(GLMPretrainedModel):
         return reordered_decoder_cache
     
     def _generate_cache(self, batch_size, max_length):
-        num_layers = 24
-        num_attention_head = 16
-        hidden_size = 1024
+        # num_layers = 24
+        # num_attention_head = 16
+        # hidden_size = 1024
+        num_layers = self.config.num_layers
+        num_attention_head = self.config.num_attention_heads
+        hidden_size = self.config.hidden_size
         head_dim = hidden_size // num_attention_head
 
         cache_kvs = []
@@ -1067,7 +1069,7 @@ class GLMForConditionalGeneration(GLMPretrainedModel):
         max_length: Tensor = None,
         **kwargs
     ):
-        max_length = 110
+        max_length = self.config.max_sequence_length
 
         attention_mask_gen = attention_mask
         batch = input_ids.shape[0]
@@ -1140,7 +1142,6 @@ class GLMForConditionalGeneration(GLMPretrainedModel):
     ):
         # return_dict = True
         model_output = self.glm(input_ids, position_ids, attention_mask, cache=cache, time_step=time_step, return_dict=return_dict)
-        # import pdb;pdb.set_trace()
         if return_dict:
             lm_logits, cache = model_output.logits, model_output.past_key_values
         else:
