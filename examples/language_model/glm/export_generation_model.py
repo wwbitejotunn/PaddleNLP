@@ -31,6 +31,13 @@ def parse_args():
         help="Model type selected in the list",
     )
     parser.add_argument(
+        "--data_type",
+        default="float32",
+        type=str,
+        # required=True,
+        help="datatype of the program: now support[float32 / float16]",
+    )
+    parser.add_argument(
         "--model_path",
         default="output_generate/splits_mp_01_sharding_01_500/",
         type=str,
@@ -51,7 +58,9 @@ def parse_args():
 def main():
     args = parse_args()
     token_path = "/root/.paddlenlp/models/THUDM/glm-10b-chinese"
-    
+    use_fp16 = args.data_type == "float16"
+    if use_fp16:
+        paddle.set_default_dtype("float16")
     tokenizer = AutoTokenizer.from_pretrained(token_path)
     model = AutoModelForConditionalGeneration.from_pretrained(args.model_path)
 
