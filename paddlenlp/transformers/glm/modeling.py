@@ -298,6 +298,13 @@ class GLMStack(nn.Layer):
         self.fuse_mt = FUSE_MT
         self.cache_kvs = []
         self.config = config
+        self.current_rank = 0
+        self.world_size = 1
+        try:
+            self.current_rank = paddle.distributed.get_rank()
+            self.world_size = paddle.distributed.get_world_size()
+        except Exception:
+            pass
 
         self.embedding_dropout = nn.Dropout(config.embedding_dropout_prob)
         self.block_position_encoding = config.block_position_encoding
@@ -342,7 +349,7 @@ class GLMStack(nn.Layer):
         hidden_states = recompute(create_custom_forward(layer_module), hidden_states, ltor_mask, cache)
         return hidden_states
 
-    def process_weight_for_fustmt(self):
+    def process_weight_for_fustmt(self, mp_degree=1):
         qkv_weights, qkv_biases = [], []
         out_weights, out_biases = [], []
         ln_scales, ln_biases = [], []
@@ -359,10 +366,10 @@ class GLMStack(nn.Layer):
             ln_bias_0 = paddle.to_tensor(layer_i.input_layernorm.bias, stop_gradient=False).astype(paddle.float32)
             #[num_head*head_dim, 3*num_head*head_dim] [hidden_size, 3 * hidden_size] => [head_dim, 3, num_attention_heads, hidden_size] 
             qkv_weight_0 = paddle.to_tensor(layer_i.attention.query_key_value.weight, stop_gradient=False)
-            qkv_weight_0 = qkv_weight_0.reshape((self.config.hidden_size, 3, num_attention_heads, head_dim))
+            qkv_weight_0 = qkv_weight_0.reshape((self.config.hidden_size, 3, num_attention_heads // mp_degree, head_dim))
             # [3, num_head, head_dim]
             qkv_bias_0 = paddle.to_tensor(layer_i.attention.query_key_value.bias, stop_gradient=False)
-            qkv_bias_0 = qkv_bias_0.reshape((3, num_attention_heads, -1))
+            qkv_bias_0 = qkv_bias_0.reshape((3, num_attention_heads // mp_degree, -1))
             out_weight_0 = paddle.to_tensor(layer_i.attention.dense.weight, stop_gradient=False)
             out_bias_0 = paddle.to_tensor(layer_i.attention.dense.bias, stop_gradient=False)
 
@@ -463,7 +470,7 @@ class GLMStack(nn.Layer):
         all_hidden_states = [hidden_states.detach()]
         if self.fuse_mt:
             if not self.is_init:
-                self.process_weight_for_fustmt()
+                self.process_weight_for_fustmt(mp_degree=self.world_size)
             attention_mask = (1 - attention_mask) * (-10000)
             # attention_mask = paddle.zeros(attention_mask.shape)
             attention_mask = attention_mask.astype(hidden_states.dtype)
@@ -1047,9 +1054,11 @@ class GLMForConditionalGeneration(GLMPretrainedModel):
         # num_attention_head = 16
         # hidden_size = 1024
         num_layers = self.config.num_layers
-        num_attention_head = self.config.num_attention_heads
+        mp_degree = paddle.distributed.get_world_size()
+        assert mp_degree > 1
+        num_attention_head = self.config.num_attention_heads // mp_degree
         hidden_size = self.config.hidden_size
-        head_dim = hidden_size // num_attention_head
+        head_dim = hidden_size // self.config.num_attention_heads
 
         cache_kvs = []
         cache_kv_size = (2, batch_size, num_attention_head, max_length, head_dim)
