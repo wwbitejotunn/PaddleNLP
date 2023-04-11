@@ -25,6 +25,7 @@ import paddle
 import paddle.distributed.fleet as fleet
 from collections.abc import Mapping, Sequence
 from paddlenlp.transformers import AutoModelForConditionalGeneration, AutoTokenizer
+from sklearn.feature_selection import SelectFdr
 
 class _StaticGuard(object):
     def __init__(self):
@@ -47,12 +48,12 @@ class InferenceEngine(object):
         tensorrt_config (TensorRTConfig): configurations for TensorRT inference
     """
 
-    def __init__(self, model_file, param_file, mp_degree=1, tensorrt_config=None):
+    def __init__(self, model_file, param_file, base_path=None, mp_degree=1, tensorrt_config=None):
         self.model_file = model_file
         self.param_file = param_file
         self.mp_degree = mp_degree
         self.tensorrt_config = tensorrt_config
-        self.auto = False
+        self.auto = True
 
         if mp_degree == 1:
             self.nranks = 1
@@ -60,7 +61,11 @@ class InferenceEngine(object):
         else:
             self.nranks = fleet.worker_num()
             self.rank = fleet.worker_index()
-
+            self.model_file = f"{base_path}_mp{self.rank}.pdmodel"
+            self.param_file = f"{base_path}_mp{self.rank}.pdiparams"
+            self.model_dir = os.path.dirname(self.model_file)
+        print("pdmodel: ", self.model_file)
+        print("pdiparams: ", self.param_file)
         self._static_guard = _StaticGuard()
         with self._static_guard:
             self._init_predictor()
@@ -89,7 +94,7 @@ class InferenceEngine(object):
             dist_config.enable_dist_model(True)
 
             if self.auto:
-                config_fname = os.path.join(self.model_dir, "rank_mapping.csv")
+                config_fname = os.path.join(self.model_dir, "../rank_mapping.csv")
             else:
                 config_fname = self._generate_comm_init_config(self.rank, self.nranks)
             dist_config.set_comm_init_config(config_fname)
@@ -143,6 +148,7 @@ class InferenceEngine(object):
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--mp_degree", default=1, type=int, help="")
+    parser.add_argument("--base_path", default="./inference/glm", type=str, help="")
     parser.add_argument(
         "--model_file", default="/root/paddlejob/workspace/env_run/fhq/paddlenlp/PaddleNLP/examples/language_model/glm/inference/glm.pdmodel", type=str, help="model directory")
     parser.add_argument(
@@ -174,7 +180,7 @@ def main():
     args = parse_args()
 
     fleet.init(is_collective=True)
-    infer_engine = InferenceEngine(args.model_file, args.param_file)
+    infer_engine = InferenceEngine(args.model_file, args.param_file, base_path=args.base_path, mp_degree=args.mp_degree)
 
     tokenizer = AutoTokenizer.from_pretrained("THUDM/glm-10b-chinese")
     input_text = ['答案：年基准利率4.35%，上下文：从实际看,贷款的基本条件是: 一是中国大陆居民,年龄在60岁以下; 二是有稳定的住址和工作或经营地点; 三是有稳定的收入来源; 四是无不良信用记录,贷款用途不能作为炒股,赌博等行为; 五是具有完全民事行为能力。在已知答案的前提下，问题：',

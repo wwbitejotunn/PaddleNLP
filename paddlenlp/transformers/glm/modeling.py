@@ -47,6 +47,7 @@ from .configuration import (
 import os
 FUSE_MT = os.getenv("FUSE_MT") == "1"
 DEBUG = False
+RING_ID = 18
 
 __all__ = [
     "GLMModel",
@@ -475,6 +476,7 @@ class GLMStack(nn.Layer):
             # attention_mask = paddle.zeros(attention_mask.shape)
             attention_mask = attention_mask.astype(hidden_states.dtype)
             new_cache_kvs = [None]
+            ring_id = RING_ID
             # TODO for single fuse_layer
             # all_cache_kvs = []
             # for i in range(len(self.layers)):
@@ -529,6 +531,7 @@ class GLMStack(nn.Layer):
                     time_step=time_step,
                     attn_mask=attention_mask,
                     # attn_mask=None,
+                    ring_id=ring_id,
                     dropout_rate=0,
                     activation="gelu",
                     trans_qkvw=False,
@@ -554,6 +557,7 @@ class GLMStack(nn.Layer):
                     time_step=time_step,
                     attn_mask=attention_mask,
                     # attn_mask=None,
+                    ring_id=ring_id,
                     dropout_rate=0,
                     activation="gelu",
                     trans_qkvw=False,
@@ -1055,7 +1059,7 @@ class GLMForConditionalGeneration(GLMPretrainedModel):
         # hidden_size = 1024
         num_layers = self.config.num_layers
         mp_degree = paddle.distributed.get_world_size()
-        assert mp_degree > 1
+        # assert mp_degree > 1
         num_attention_head = self.config.num_attention_heads // mp_degree
         hidden_size = self.config.hidden_size
         head_dim = hidden_size // self.config.num_attention_heads
