@@ -47,7 +47,7 @@ from .configuration import (
 import os
 FUSE_MT = os.getenv("FUSE_MT") == "1"
 DEBUG = False
-RING_ID = 18
+RING_ID = int(os.getenv("RING_ID")) if os.getenv("RING_ID") else -1
 
 __all__ = [
     "GLMModel",
@@ -127,9 +127,9 @@ class GLMAttention(nn.Layer):
         k_layer = self._transpose_for_scores(mixed_k_layer)
         # [bs, num_head, cache_len + seq_len, head_dim]
         v_layer = self._transpose_for_scores(mixed_v_layer)
-        if DEBUG:
-            print("block[cache k]: ", k_layer[0,0,0,:].cpu().numpy().reshape(-1).tolist()[:20])
-            print("block[cache v]: ", v_layer[0,0,0,:].cpu().numpy().reshape(-1).tolist()[:20])
+        # if DEBUG:
+        #     print("block[cache k]: ", k_layer[0,0,0,:].cpu().numpy().reshape(-1).tolist()[:20])
+        #     print("block[cache v]: ", v_layer[0,0,0,:].cpu().numpy().reshape(-1).tolist()[:20])
 
         return q_layer, k_layer, v_layer
 
@@ -155,6 +155,9 @@ class GLMAttention(nn.Layer):
             mixed_q_layer, mixed_k_layer, mixed_v_layer = paddle.split(mixed_layer, num_or_sections=3, axis=-1)
             # [bs, num_attention_heads, seq_len, head_dim]
             mixed_q_layer = mixed_q_layer[:, :, -query_length:]
+        if DEBUG:
+            print("block[cache k]: ", mixed_k_layer[0,0,0,:].cpu().numpy().reshape(-1).tolist()[:20])
+            print("block[cache v]: ", mixed_v_layer[0,0,0,:].cpu().numpy().reshape(-1).tolist()[:20])
 
         return mixed_q_layer, mixed_k_layer, mixed_v_layer
 
@@ -165,8 +168,8 @@ class GLMAttention(nn.Layer):
         else:
             # [bs,  num_head, seq_len, head_dim]
             q_layer, k_layer, v_layer = self._core_attention(hidden_states, cache)
-        if DEBUG:
-            print("block[qkv_out]: ", q_layer.cpu().numpy().reshape(-1).tolist()[:20])
+        # if DEBUG:
+        #     print("block[qkv_out]: ", q_layer.cpu().numpy().reshape(-1).tolist()[:20])
 
         if self.attention_scale > 1.0:
             attention_scores = paddle.matmul(
@@ -224,30 +227,30 @@ class GLMBlock(nn.Layer):
         self.mlp = GPT2MLP(config)
 
     def forward(self, hidden_states: Tensor, ltor_mask: Tensor, cache: Tensor = None):
-        if DEBUG:
-            print("block[whole input]: ", hidden_states.cpu().numpy().reshape(-1).tolist()[:20])
+        # if DEBUG:
+        #     print("block[whole input]: ", hidden_states.cpu().numpy().reshape(-1).tolist()[:20])
         layernorm_output = self.input_layernorm(hidden_states)
         
         # Layer norm before transformer layer
         cache = self.input_layernorm(cache) if cache is not None else None
-        if DEBUG:
-            print("block[qkv input]: ", layernorm_output.cpu().numpy().reshape(-1).tolist()[:20])
+        # if DEBUG:
+        #     print("block[qkv input]: ", layernorm_output.cpu().numpy().reshape(-1).tolist()[:20])
         # Self attention
         attention_output = self.attention(layernorm_output, ltor_mask, cache)
 
-        if DEBUG:
-            print("block[attention out]: ", attention_output.cpu().numpy().reshape(-1).tolist()[:20])
+        # if DEBUG:
+        #     print("block[attention out]: ", attention_output.cpu().numpy().reshape(-1).tolist()[:20])
         # Residual connection
         layernorm_input = hidden_states + attention_output
         # Layernorm after attention
         layernorm_output = self.post_attention_layernorm(layernorm_input)
         # MLP
-        if DEBUG:
-            print("block[ffn input]: ", layernorm_output.cpu().numpy().reshape(-1).tolist()[:20])
+        # if DEBUG:
+        #     print("block[ffn input]: ", layernorm_output.cpu().numpy().reshape(-1).tolist()[:20])
         mlp_output = self.mlp(layernorm_output)
 
-        if DEBUG:
-            print("block[ffn output]: ", mlp_output.cpu().numpy().reshape(-1).tolist()[:20])
+        # if DEBUG:
+        #     print("block[ffn output]: ", mlp_output.cpu().numpy().reshape(-1).tolist()[:20])
         # Second residual connection
         output = layernorm_input + mlp_output
         return output
@@ -350,7 +353,7 @@ class GLMStack(nn.Layer):
         hidden_states = recompute(create_custom_forward(layer_module), hidden_states, ltor_mask, cache)
         return hidden_states
 
-    def process_weight_for_fustmt(self, mp_degree=1):
+    def process_weight_for_fustmt(self):
         qkv_weights, qkv_biases = [], []
         out_weights, out_biases = [], []
         ln_scales, ln_biases = [], []
@@ -359,6 +362,8 @@ class GLMStack(nn.Layer):
         ffn2_weights, ffn2_biases = [], []
         num_attention_heads = self.config.num_attention_heads
         head_dim = self.config.hidden_size // self.config.num_attention_heads
+        # mp_degree = paddle.distributed.get_world_size()
+        mp_degree = self.config.tensor_parallel_degree if self.config.tensor_parallel_degree else 1
 
         for i in range(self.config.num_layers):
 
@@ -471,45 +476,14 @@ class GLMStack(nn.Layer):
         all_hidden_states = [hidden_states.detach()]
         if self.fuse_mt:
             if not self.is_init:
-                self.process_weight_for_fustmt(mp_degree=self.world_size)
+                self.process_weight_for_fustmt()
             attention_mask = (1 - attention_mask) * (-10000)
             # attention_mask = paddle.zeros(attention_mask.shape)
             attention_mask = attention_mask.astype(hidden_states.dtype)
             new_cache_kvs = [None]
             ring_id = RING_ID
             # TODO for single fuse_layer
-            # all_cache_kvs = []
-            # for i in range(len(self.layers)):
-            #     hidden_states, new_cache_kvs = fused_multi_transformer(
-            #         hidden_states,
-            #         self.ln_scales[i:i+1],
-            #         self.ln_biases[i:i+1],
-            #         self.qkv_weights[i:i+1],
-            #         self.qkv_biases[i:i+1],
-            #         self.out_weights[i:i+1],
-            #         self.out_biases[i:i+1],
-            #         self.ffn_ln_scales[i:i+1],
-            #         self.ffn_ln_biases[i:i+1],
-            #         self.ffn1_weights[i:i+1],
-            #         self.ffn1_biases[i:i+1],
-            #         self.ffn2_weights[i:i+1],
-            #         self.ffn2_biases[i:i+1],
-            #         pre_layer_norm=True,
-            #         epsilon=self.final_layernorm._epsilon,
-            #         cache_kvs=cache[i:i+1],
-            #         time_step=time_step,
-            #         # attn_mask=attention_mask,
-            #         attn_mask=None,
-            #         dropout_rate=0,
-            #         activation="gelu",
-            #         trans_qkvw=False,
-            #     )
-                # if DEBUG:
-                #     print("layer", i, ": ", hidden_states[:,:,1])
-                # all_hidden_states.append(hidden_states.detach())
-                # all_cache_kvs.append(new_cache_kvs[-1])
-            # output = self.final_layernorm(hidden_states)
-            # new_cache_kvs = all_cache_kvs
+                
             if cache:
                 hidden_states, new_cache_kvs = fused_multi_transformer(
                     hidden_states,
@@ -564,9 +538,10 @@ class GLMStack(nn.Layer):
                 )
             # 2, batch, num_head, seq_len, head_dim
             if DEBUG:
-                for i in range(len(new_cache_kvs)):
-                    print("block[cache k]: ", new_cache_kvs[i][0,0,0,0,:].cpu().numpy().reshape(-1).tolist()[:20])
-                    print("block[cache v]: ", new_cache_kvs[i][1,0,0,0,:].cpu().numpy().reshape(-1).tolist()[:20])
+                # for i in range(len(new_cache_kvs)):
+                #     print("block[cache k]: ", new_cache_kvs[i][0,0,0,0,:].cpu().numpy().reshape(-1).tolist()[:20])
+                #     print("block[cache v]: ", new_cache_kvs[i][1,0,0,0,:].cpu().numpy().reshape(-1).tolist()[:20])
+                print("block[hidden_states]: ", hidden_states.cpu().numpy().reshape(-1).tolist()[:20])
             all_hidden_states.append(hidden_states.detach())
             final_out = self.final_layernorm(hidden_states)
 
@@ -581,10 +556,6 @@ class GLMStack(nn.Layer):
 
        
         for i, layer in enumerate(self.layers):
-            # if i == 0 and DEBUG:
-            #     print(attention_mask)
-            # self.layers[i].attention.query_key_value.bias.set_value(np.zeros(self.layers[i].attention.query_key_value.bias.shape, dtype=np.float32))
-            # self.layers[i].attention.dense.bias.set_value(np.zeros(self.layers[i].attention.dense.bias.shape, dtype=np.float32))
 
             mem_i = cache[i] if cache is not None else None
             has_gradient = not hidden_states.stop_gradient
@@ -596,10 +567,12 @@ class GLMStack(nn.Layer):
 
             if isinstance(hidden_states, tuple):
                 hidden_states = hidden_states[0]
-            if DEBUG:
-                print("layer", i, " output:", hidden_states[:,:,1])
+            # if DEBUG:
+            #     print("layer", i, " output:", hidden_states[:,:,1])
 
             all_hidden_states.append(hidden_states.detach())
+        if DEBUG:
+            print("block[hidden_states]: ", hidden_states.cpu().numpy().reshape(-1).tolist()[:20])
 
         # if DEBUG:
         #     print("final_out:", hidden_states)
@@ -622,21 +595,6 @@ class GLMStack(nn.Layer):
 
     def update_memories(self, hiddens, cache):
         memory_length = cache[0].shape[1] if cache else 0
-        query_length = hiddens[0].shape[1]
-        new_memory_length = memory_length + query_length
-
-        new_memories = cache if cache is not None else []
-        for i in range(len(hiddens)):
-            if cache is None:
-                new_memories.append((hiddens[i][-new_memory_length:]))
-            else:
-                new_memories[i] = paddle.concat([cache[i][:, -memory_length:], hiddens[i]], axis=1)
-        return new_memories
-    
-    def update_memories_v2(self, hiddens, cache):
-        # hiddens: [batch, seq, num_head*head_dim]
-        # cache: [2, batch, num_head, seq, head_dim]
-        memory_length = cache[0].shape[3] if cache else 0
         query_length = hiddens[0].shape[1]
         new_memory_length = memory_length + query_length
 
@@ -1115,14 +1073,16 @@ class GLMForConditionalGeneration(GLMPretrainedModel):
             if attention_mask is not None:
                 attention_mask_gen = attention_mask[:, :, :seq_length, :seq_length]
             if FUSE_MT:
-                # if not max_length:
-                #     max_length = 200
-                
                 cache = self._generate_cache(batch_size=batch, max_length=max_length)
             print("context start")
-            self.time_step = input_ids.shape[1]
-            paddle.increment(self.time_step, -1)
-            # paddle.assign(self.time_step, seq_length - 1)
+            # TODO 
+            # self.time_step = input_ids.shape[1]
+            # paddle.increment(self.time_step, -1)
+            # TODO end
+
+            self.time_step = paddle.to_tensor(
+                [input_ids.shape[1]], dtype='int32', place=paddle.CPUPlace()
+            )
         # extended_shape = attention_mask.shape
         # extended_shape[-1] = max_length
         # if extended_shape[-2] > 1:
