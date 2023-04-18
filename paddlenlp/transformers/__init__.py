@@ -212,7 +212,8 @@ from .pegasus.modeling import *
 from .pegasus.tokenizer import *
 from .pegasus.configuration import *
 from .glm.configuration import *
-from .glm.modeling import *
+# from .glm.modeling import *
+from .glm.modeling_fuse_mt import *
 from .glm.tokenizer import *
 from .auto.configuration import *
 from .nystromformer.configuration import *

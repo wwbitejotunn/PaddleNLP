@@ -364,6 +364,7 @@ class GLMStack(nn.Layer):
         head_dim = self.config.hidden_size // self.config.num_attention_heads
         # mp_degree = paddle.distributed.get_world_size()
         mp_degree = self.config.tensor_parallel_degree if self.config.tensor_parallel_degree else 1
+        print("!!!!debug mp_degree:  ", mp_degree)
 
         for i in range(self.config.num_layers):
 

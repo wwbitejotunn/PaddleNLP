@@ -27,7 +27,7 @@ def parse_arguments():
 
     parser = argparse.ArgumentParser()
     # parser.add_argument("--model_path", required=True, help="The directory of model.")
-    parser.add_argument("--model_path", default="/root/paddlejob/workspace/env_run/fhq/models/glm/checkpoint-100/", help="The directory of model.")
+    parser.add_argument("--model_path", default="./glm_10b/", help="The directory of model.")
     parser.add_argument("--batch_size", type=int, default=2, help="The batch size of data.")
     parser.add_argument("--src_length", type=int, default=200, help="The batch size of data.")
     parser.add_argument("--tgt_length", type=int, default=20, help="The batch size of data.")
@@ -56,7 +56,17 @@ def load_model(model_name_or_path: str, model_class: Type[PretrainedModel]):
     world_size = paddle.distributed.get_world_size()
 
     if world_size == 1:
-        return model_class.from_pretrained(model_name_or_path, config=config)
+        model = model_class.from_pretrained(
+            model_name_or_path, config=config,
+            dtype=dtype,
+            )
+        weight_file = os.path.join(model_name_or_path, f"model_state.pdparams")
+        state_dict = paddle.load(weight_file, return_numpy=True)
+        # model.set_state_dict(state_dict)
+        model.glm.set_state_dict(state_dict)
+        model.glm.transformer.set_state_dict(state_dict)
+        
+        return model
 
     # start to init distributed env
     strategy = fleet.DistributedStrategy()
@@ -105,7 +115,7 @@ class Predictor(object):
         model = load_model(path, GLMForConditionalGeneration)
         self.model = model
         # self.model = AutoModelForConditionalGeneration.from_pretrained(args.model_path)
-        self.model.glm.init_weight_fuse_mt()
+        # self.model.glm.init_weight_fuse_mt()
         self.model.eval()
 
     def preprocess(self, input_text):
