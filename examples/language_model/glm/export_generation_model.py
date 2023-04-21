@@ -44,7 +44,7 @@ def parse_args():
     )
     parser.add_argument(
         "--model_path",
-        default="output_generate/splits_mp_01_sharding_01_500/",
+        default="/root/.paddlenlp/models/THUDM/glm-large-chinese",
         type=str,
         required=False,
         help="Path of the trained model to be exported.",
@@ -58,6 +58,70 @@ def parse_args():
     )
     args = parser.parse_args()
     return args
+
+def get_state_dict(config, state_dict, model):
+    embed_dim = config.hidden_size
+    num_attention_heads = config.num_attention_heads // config.tensor_parallel_degree
+    head_dim = embed_dim // num_attention_heads
+    new_state_dict = {}
+    dtype = "float16" if model.glm.word_embeddings.weight.dtype.name == "FP16" else "float32"
+    for k, v in state_dict.items():
+        if k.startswith("glm.word_embeddings"):
+            model.glm.word_embeddings.weight.set_value(v.astype(dtype))
+            continue
+        elif k.startswith("glm.transformer.position_embeddings"):
+            model.glm.transformer.position_embeddings.weight.set_value(v.astype(dtype))
+            continue
+        elif k.startswith("glm.transformer.final_layernorm.weight"):
+            model.glm.transformer.final_layernorm.weight.set_value(v.astype(dtype))
+            continue
+        elif k.startswith("glm.transformer.final_layernorm.bias"):
+            model.glm.transformer.final_layernorm.bias.set_value(v.astype(dtype))
+            continue
+        elif k.endswith("glm.transformer.block_position_embeddings.weight"):
+            model.glm.transformer.block_position_embeddings.weight.set_value(v.astype(dtype))
+            continue
+        idx = int(k.split(".")[3])
+        if k.endswith("input_layernorm.weight"):
+            new_state_dict["fusemt.{}.ln_scale".format(idx)] = v
+            model.glm.transformer.transformer_block.ln_scales[idx].set_value(v.astype("float32"))
+        elif k.endswith("input_layernorm.bias"):
+            new_state_dict["fusemt.{}.ln_bias".format(idx)] = v
+            model.glm.transformer.transformer_block.ln_biases[idx].set_value(v.astype("float32"))
+        elif k.endswith("attention.query_key_value.weight"):
+            new_state_dict["fusemt.{}.qkv_weight".format(idx)] = v.reshape([embed_dim, 3, num_attention_heads,  head_dim])
+            model.glm.transformer.transformer_block.qkv_weights[idx].set_value(v.reshape([embed_dim, 3, num_attention_heads,  head_dim]))
+        elif k.endswith("attention.query_key_value.bias"):
+            new_state_dict["fusemt.{}.qkv_bias".format(idx)] = v.reshape([3, num_attention_heads, head_dim])
+            model.glm.transformer.transformer_block.qkv_biases[idx].set_value(v.reshape([3, num_attention_heads, head_dim]))
+        elif k.endswith("attention.dense.weight"):
+            new_state_dict["fusemt.{}.linear_weight".format(idx)] = v
+            model.glm.transformer.transformer_block.linear_weights[idx].set_value(v)
+        elif k.endswith("attention.dense.bias"):
+            new_state_dict["fusemt.{}.linear_bias".format(idx)] = v
+            model.glm.transformer.transformer_block.linear_biases[idx].set_value(v)
+        elif k.endswith("post_attention_layernorm.weight"):
+            new_state_dict["fusemt.{}.ffn_ln_scale".format(idx)] = v
+            model.glm.transformer.transformer_block.ffn_ln_scales[idx].set_value(v.astype("float32"))
+        elif k.endswith("post_attention_layernorm.bias"):
+            new_state_dict["fusemt.{}.ffn_ln_bias".format(idx)] = v
+            model.glm.transformer.transformer_block.ffn_ln_biases[idx].set_value(v.astype("float32"))
+        elif k.endswith("mlp.dense_h_to_4h.weight"):
+            new_state_dict["fusemt.{}.ffn1_weight".format(idx)] = v
+            model.glm.transformer.transformer_block.ffn1_weights[idx].set_value(v)
+        elif k.endswith("mlp.dense_h_to_4h.bias"):
+            new_state_dict["fusemt.{}.ffn1_bias".format(idx)] = v
+            model.glm.transformer.transformer_block.ffn1_biases[idx].set_value(v)
+        elif k.endswith("mlp.dense_4h_to_h.weight"):
+            new_state_dict["fusemt.{}.ffn2_weight".format(idx)] = v
+            model.glm.transformer.transformer_block.ffn2_weights[idx].set_value(v)
+        elif k.endswith("mlp.dense_4h_to_h.bias"):
+            new_state_dict["fusemt.{}.ffn2_bias".format(idx)] = v
+            model.glm.transformer.transformer_block.ffn2_biases[idx].set_value(v)
+        else:
+            print("Unknow weight {}".format(k))
+    return new_state_dict
+
 
 def load_model(model_name_or_path: str, model_class: Type[PretrainedModel]):
     config = GLMConfig.from_pretrained(model_name_or_path)
@@ -115,12 +179,13 @@ def load_model(model_name_or_path: str, model_class: Type[PretrainedModel]):
 
 def main():
     args = parse_args()
-    token_path = "/root/.paddlenlp/models/THUDM/glm-10b-chinese"
+    token_path = "/root/.paddlenlp/models/THUDM/glm-large-chinese"
     use_fp16 = args.data_type == "float16"
     if use_fp16:
         paddle.set_default_dtype("float16")
     tokenizer = AutoTokenizer.from_pretrained(token_path)
     model = AutoModelForConditionalGeneration.from_pretrained(args.model_path)
+    
 
     model.eval()
     input_spec = [
