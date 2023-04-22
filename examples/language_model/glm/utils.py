@@ -487,3 +487,25 @@ class BeamHypotheses:
             cur_score = best_sum_logprobs / cur_len**self.length_penalty
             ret = self.worst_score >= cur_score
             return ret
+
+def update_word_embedding_weights(config, state_dict, model):
+    embed_dim = config.hidden_size
+    new_state_dict = {}
+    dtype = "float16" if model.glm.word_embeddings.weight.dtype.name == "FP16" else "float32"
+    for k, v in state_dict.items():
+        if k.startswith("glm.word_embeddings"):
+            model.glm.word_embeddings.weight.set_value(v.astype(dtype))
+            continue
+        elif k.startswith("glm.transformer.position_embeddings"):
+            model.glm.transformer.position_embeddings.weight.set_value(v.astype(dtype))
+            continue
+        elif k.startswith("glm.transformer.final_layernorm.weight"):
+            model.glm.transformer.final_layernorm.weight.set_value(v.astype(dtype))
+            continue
+        elif k.startswith("glm.transformer.final_layernorm.bias"):
+            model.glm.transformer.final_layernorm.bias.set_value(v.astype(dtype))
+            continue
+        elif k.endswith("glm.transformer.block_position_embeddings.weight"):
+            model.glm.transformer.block_position_embeddings.weight.set_value(v.astype(dtype))
+            continue
+    return new_state_dict

@@ -213,12 +213,12 @@ from .pegasus.tokenizer import *
 from .pegasus.configuration import *
 from .glm.configuration import *
 
-import os
-FUSE_MT = os.getenv("FUSE_MT") == "1"
-if FUSE_MT:
-    from .glm.modeling_fuse_mt import *
-else:
-    from .glm.modeling import *
+# import os
+# FUSE_MT = os.getenv("FUSE_MT") == "1"
+# if FUSE_MT:
+#     from .glm.modeling_fuse_mt import *
+# else:
+from .glm.modeling import *
 
 from .glm.tokenizer import *
 from .auto.configuration import *
