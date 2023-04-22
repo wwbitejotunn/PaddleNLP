@@ -333,7 +333,8 @@ class GLMStack(nn.Layer):
         ffn2_bias_attrs = [paddle.ParamAttr(name="fusemt.{}.ffn2_bias".format(i)) for i in range(config.num_layers)]
         self.transformer_block = FusedMultiTransformer(
                                     config.hidden_size,
-                                    config.num_attention_heads // config.tensor_parallel_degree,
+                                    # config.num_attention_heads // config.tensor_parallel_degree,
+                                    config.num_attention_heads,
                                     4*config.hidden_size,
                                     activation="gelu",
                                     num_layers=config.num_layers,
@@ -432,6 +433,7 @@ class GLMStack(nn.Layer):
             ring_id = RING_ID
             # TODO for single fuse_layer
             if cache:
+                print("!!!!!!!!cache shape: ", cache[0].shape)
                 hidden_states, new_cache_kvs = self.transformer_block(hidden_states, attn_mask=attention_mask, caches=cache, time_step=time_step)
             else:
                 hidden_states = self.transformer_block(hidden_states, attn_mask=attention_mask, caches=cache)
@@ -702,6 +704,7 @@ class GLMPretrainedModel(PretrainedModel):
         num_attention_heads = self.config.num_attention_heads // mp_degree
         head_dim = embed_dim // self.config.num_attention_heads
         
+        
         dtype = paddle.get_default_dtype()
         new_state_dict = {}
         for k, v in state_dict.items():
@@ -725,10 +728,11 @@ class GLMPretrainedModel(PretrainedModel):
             elif k.endswith("post_attention_layernorm.bias"):
                 new_state_dict["fusemt.{}.ffn_ln_bias".format(idx)] = v.astype("float32")
             elif k.endswith("attention.query_key_value.weight"):
-                vv = v.reshape([embed_dim, 3, self.config.num_attention_heads,  head_dim])
+                vv = v.reshape([embed_dim, 3, num_attention_heads, head_dim])
+                print("!!!!!!!attention.query_key_value.weight shape: ", vv.shape)
                 new_state_dict["fusemt.{}.qkv_weight".format(idx)] = vv.astype(dtype)
             elif k.endswith("attention.query_key_value.bias"):
-                vv = v.reshape([3, self.config.num_attention_heads,  head_dim])
+                vv = v.reshape([3, num_attention_heads, head_dim])
                 new_state_dict["fusemt.{}.qkv_bias".format(idx)] = vv.astype(dtype)
             elif k.endswith("attention.dense.weight"):
                 new_state_dict["fusemt.{}.linear_weight".format(idx)] = v.astype(dtype)
@@ -953,12 +957,16 @@ class GLMForConditionalGeneration(GLMPretrainedModel):
         num_layers = self.config.num_layers
         mp_degree = paddle.distributed.get_world_size()
         # assert mp_degree > 1
+        
         num_attention_head = self.config.num_attention_heads // mp_degree
         hidden_size = self.config.hidden_size
         head_dim = hidden_size // self.config.num_attention_heads
+        print("\n!!!!num_attention_head: ", num_attention_head)
+        print("\n!!!!self.config.num_attention_heads: ", self.config.num_attention_heads)
 
         cache_kvs = []
         cache_kv_size = (2, batch_size, num_attention_head, max_length, head_dim)
+        print("\n!!!!cache_kv_size: ", cache_kv_size)
         
         for _ in range(num_layers):
             cache_kv = -10000 * paddle.ones(cache_kv_size, dtype=paddle.get_default_dtype())
