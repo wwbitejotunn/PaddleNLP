@@ -352,7 +352,7 @@ class GLMStack(nn.Layer):
                                     ffn1_bias_attrs=ffn1_bias_attrs,
                                     ffn2_weight_attrs=ffn2_weight_attrs,
                                     ffn2_bias_attrs=ffn2_bias_attrs,
-                                    trans_qkvw=False,
+                                    trans_qkvw=True,
                                     )
 
         self.final_layernorm = nn.LayerNorm(config.hidden_size, epsilon=config.layernorm_epsilon)
@@ -728,7 +728,8 @@ class GLMPretrainedModel(PretrainedModel):
             elif k.endswith("post_attention_layernorm.bias"):
                 new_state_dict["fusemt.{}.ffn_ln_bias".format(idx)] = v.astype("float32")
             elif k.endswith("attention.query_key_value.weight"):
-                vv = v.reshape([embed_dim, 3, num_attention_heads, head_dim])
+                # [embed_dim, 3, num_attention_heads, head_dim] -> [3, num_head, dim_head, dim_embed]
+                vv = v.reshape([embed_dim, 3, num_attention_heads, head_dim]).transpose([1, 2, 3, 0])
                 print("!!!!!!!attention.query_key_value.weight shape: ", vv.shape)
                 new_state_dict["fusemt.{}.qkv_weight".format(idx)] = vv.astype(dtype)
             elif k.endswith("attention.query_key_value.bias"):
@@ -805,7 +806,7 @@ class GLMModel(GLMPretrainedModel):
             )
 
         self.transformer = GLMStack(config)
-        self.apply(self.init_weights)
+        # self.apply(self.init_weights)
 
     def get_input_embeddings(self):
         return self.word_embeddings
@@ -940,7 +941,7 @@ class GLMForConditionalGeneration(GLMPretrainedModel):
         self.cache_kvs = []
         self.glm = GLMModel(config)
         self.config = config
-        self.apply(self.init_weights)
+        # self.apply(self.init_weights)
 
     def _reorder_cache(self, cache, beam_index):
         # Speedy decoding is disabled and no reorder is needed if decoder cache is not given.

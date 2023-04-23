@@ -1,0 +1,1 @@
+python3 convertWeightInt8-InferenceModel.py --input_dir /root/paddlejob/workspace/env_run/fhq/paddlenlp/PaddleNLP/examples/language_model/glm/inference/ --output_dir /root/paddlejob/workspace/env_run/fhq/paddlenlp/PaddleNLP/examples/language_model/glm/int8_weightonly/
