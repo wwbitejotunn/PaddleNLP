@@ -25,7 +25,7 @@ import paddle
 import paddle.distributed.fleet as fleet
 from collections.abc import Mapping, Sequence
 from paddlenlp.transformers import AutoModelForConditionalGeneration, AutoTokenizer
-from ppfleetx_ops import topp_sampling
+
 class _StaticGuard(object):
     def __init__(self):
         pass
@@ -144,9 +144,9 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--mp_degree", default=1, type=int, help="")
     parser.add_argument(
-        "--model_file", default="inference/glm.pdmodel", type=str, help="model directory")
+        "--model_file", default="inference_ptq_int8/glm.pdmodel", type=str, help="model directory")
     parser.add_argument(
-        "--param_file", default="inference/glm.pdiparams", type=str, help="model directory")
+        "--param_file", default="inference_ptq_int8/glm.pdiparams", type=str, help="model directory")
 
     args = parser.parse_args()
     return args

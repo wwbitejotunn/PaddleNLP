@@ -182,7 +182,14 @@ def generate(
             _, next_tokens = paddle.topk(probs, k=2 * num_beams, axis=-1, largest=True)
             # _, next_tokens = paddle.topk(probs, k=num_beams, axis=-1, largest=True)
         else:
-            next_tokens = paddle.multinomial(probs, num_samples=2 * num_beams)
+            # next_tokens = paddle.multinomial(probs, num_samples=2 * num_beams)
+            from ppfleetx_ops import topp_sampling
+            top_ps_tensor = paddle.full(
+                        shape=[paddle.shape(probs)[0]],
+                        fill_value=top_p,
+                        dtype=probs.dtype
+                    )
+            _, next_tokens = topp_sampling(probs,top_ps_tensor,random_seed=100)
         next_token_scores = paddle.take_along_axis(next_token_scores, next_tokens, axis=-1)
         next_token_scores = paddle.sort(next_token_scores, descending=True, axis=1)
         _indices = paddle.argsort(next_token_scores, descending=True, axis=1)

@@ -720,6 +720,7 @@ class GLMPretrainedModel(PretrainedModel):
 
             idx = k.split(".")[3]
             if k.endswith("input_layernorm.weight"):
+                print("!!!! new_state_dict end with input_layernorm.weight")
                 new_state_dict["fusemt.{}.ln_scale".format(idx)] = v.astype("float32")
             elif k.endswith("input_layernorm.bias"):
                 new_state_dict["fusemt.{}.ln_bias".format(idx)] = v.astype("float32")

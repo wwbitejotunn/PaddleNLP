@@ -1072,6 +1072,7 @@ class GenerationMixin(object):
             # multinomial not support fp16 and bf16 currently, issue: https://github.com/PaddlePaddle/Paddle/issues/51852
             if paddle.get_default_dtype() not in ["float32", "float64"]:
                 probs = probs.astype("float32")
+            paddle.Print(probs,message="multinomial input probs")
             next_tokens = paddle.multinomial(probs)
             next_scores = paddle.index_sample(origin_probs, next_tokens)
 

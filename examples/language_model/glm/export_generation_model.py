@@ -16,7 +16,8 @@ import argparse
 import os
 
 import paddle
-
+import paddlenlp
+print(paddlenlp.__path__)
 from paddlenlp.transformers import GLMForConditionalGeneration
 from paddlenlp.transformers import AutoTokenizer
 from utils import load_model
@@ -83,7 +84,7 @@ def main():
         # top_k
         1,
         # top_p
-        1.0,
+        None,
         1.0,
         # repetition_penalty
         1,

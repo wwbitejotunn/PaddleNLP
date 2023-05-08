@@ -1,5 +1,5 @@
 # python3 predict_generation.py --model_path /root/paddlejob/workspace/env_run/fhq/models/glm/checkpoint-100/
-export PYTHONPATH=/root/paddlejob/workspace/env_run/fhq/dev_0017/PaddleNLP:${PYTHONPATH}
+export PYTHONPATH=/root/paddlejob/workspace/env_run/wangbojun/glm_10b_int8_ptq/PaddleNLP/:${PYTHONPATH}
 export RING_ID=0
 export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 
