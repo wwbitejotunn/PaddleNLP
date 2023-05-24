@@ -60,7 +60,7 @@ def parse_args():
 
 def main():
     args = parse_args()
-    token_path = "/root/.paddlenlp/models/THUDM/glm-large-chinese"
+    token_path = "THUDM/glm-large-chinese"
     use_fp16 = args.data_type == "float16"
     if use_fp16:
         paddle.set_default_dtype("float16")

@@ -20,10 +20,10 @@ class load_act_scale_json():
     with open(json_file_path) as json_file:
       self.scale_dict = json.load(json_file)
     self.key_map={
-      "qkv_in_scale":"glm_block_#.attention.query_key_value",
-      "out_linear_in_scale":"glm_block_#.attention.dense",
-      "ffn1_in_scale":"glm_block_#.mlp.dense_h_to_4h",
-      "ffn2_in_scale":"glm_block_#.mlp.dense_4h_to_h",
+      "qkv_in_scale":"glm.transformer.layers.#.attention.query_key_value",
+      "out_linear_in_scale":"glm.transformer.layers.#.attention.dense",
+      "ffn1_in_scale":"glm.transformer.layers.#.mlp.dense_h_to_4h",
+      "ffn2_in_scale":"glm.transformer.layers.#.mlp.dense_4h_to_h",
     }
     self.scale={}
     for scale_type, key_template in self.key_map.items():
@@ -33,7 +33,7 @@ class load_act_scale_json():
           num_layer=num_layer+1
       
       self.scale[scale_type]=np.array([
-        self.scale_dict[key_template.replace("#",str(i))] for i in range(num_layer)
+        1/self.scale_dict[key_template.replace("#",str(i))] for i in range(num_layer)
       ])
 
 class load_weight_scale_json():
@@ -41,10 +41,10 @@ class load_weight_scale_json():
     with open(json_file_path) as json_file:
       self.scale_dict = json.load(json_file)
     self.key_map={
-      "qkv_out_scale":"glm_block_#.attention.query_key_value",
-      "out_linear_out_scale":"glm_block_#.attention.dense",
-      "ffn1_out_scale":"glm_block_#.mlp.dense_h_to_4h",
-      "ffn2_out_scale":"glm_block_#.mlp.dense_4h_to_h",
+      "qkv_weight_scale":"glm.transformer.layers.#.attention.query_key_value",
+      "out_linear_weight_scale":"glm.transformer.layers.#.attention.dense",
+      "ffn1_weight_scale":"glm.transformer.layers.#.mlp.dense_h_to_4h",
+      "ffn2_weight_scale":"glm.transformer.layers.#.mlp.dense_4h_to_h",
     }
     self.scale={}
     for scale_type, key_template in self.key_map.items():
@@ -102,8 +102,15 @@ class ptq_int8_converter:
         for i, weight_name in enumerate(qkv_weight_names):
           qkv_out_scale_name = weight_name+"_out_scale"
           if(weight_name in self._processed_params_name):
+            qkv_out_scale_name = weight_name+"_out_scale"
+            qkv_out_scale_names.append(qkv_out_scale_name)
+            qkv_out_scale_tensor = self._scope.find_var(qkv_out_scale_name).get_tensor()
+            qkv_out_scale_data = np.array(qkv_out_scale_tensor)
+            block.create_parameter(shape=qkv_out_scale_data.shape, dtype='float32', name=qkv_out_scale_name)
+            qkv_out_scale_tensor.set(qkv_out_scale_data,self._place)
             continue
           print("process ", weight_name)
+          self._processed_params_name.append(weight_name)
           weight_tensor = self._scope.find_var(weight_name).get_tensor()
           shape = weight_tensor._get_dims()
           num_head, dim_head = shape[1], shape[2]
@@ -112,7 +119,7 @@ class ptq_int8_converter:
           weight_data_int8 = weight_data.astype("int8")
           weight_tensor.set(weight_data_int8, self._place)
           out_scale_tensor = self._scope.var(qkv_out_scale_name).get_tensor()
-          out_scale_data=weight_scales.scale["qkv_out_scale"][i]
+          out_scale_data=weight_scales.scale["qkv_weight_scale"][i]/(127.0*act_scales.scale["qkv_in_scale"][i]*127.0)
           # import pdb;pdb.set_trace()
           if out_scale_data.ndim==0:
             out_scale_data=np.repeat(out_scale_data,out_dim)
@@ -124,24 +131,32 @@ class ptq_int8_converter:
         # out_linear, ffn1, ffn2
         weight_var_names = ["OutLinearW", "FFN1Weight", "FFN2Weight"]
         out_scale_var_names = ["OutLinearOutScale", "FFN1OutScale", "FFN2OutScale"]
-        out_scale_keys = ["out_linear_out_scale","ffn1_out_scale","ffn2_out_scale"]
+        out_scale_keys = ["out_linear_weight_scale","ffn1_weight_scale","ffn2_weight_scale"]
         for i_gemm in range(3):
           weight_names = op.input(weight_var_names[i_gemm])
           out_scale_var_name = out_scale_var_names[i_gemm]
           out_scale_names = []
           for i,weight_name in enumerate(weight_names):
             if(weight_name in self._processed_params_name):
+              out_scale_name = weight_name+"_out_scale"
+              out_scale_names.append(out_scale_name)
+              out_scale_tensor = self._scope.find_var(out_scale_name).get_tensor()
+              out_scale_data = np.array(out_scale_tensor)
+              block.create_parameter(shape=out_scale_data.shape, dtype='float32', name=out_scale_name)
+              out_scale_tensor.set(out_scale_data,self._place)
               continue
             print("process ", weight_name)
+            self._processed_params_name.append(weight_name)
             weight_tensor = self._scope.find_var(weight_name).get_tensor()
             shape = weight_tensor._get_dims()
             out_dim = shape[1]
             weight_data = np.array(weight_tensor)
             weight_data_int8 = weight_data.astype("int8")
+            weight_data_int8 = np.transpose(weight_data_int8, (1,0))
             weight_tensor.set(weight_data_int8, self._place)
             out_scale_name = weight_name + "_out_scale"
             out_scale_tensor = self._scope.var(out_scale_name).get_tensor()
-            out_scale_data=weight_scales.scale[out_scale_keys[i_gemm]][i]
+            out_scale_data=weight_scales.scale[out_scale_keys[i_gemm]][i]/(127.0*act_scales.scale[out_scale_keys[i_gemm].replace("_weight_","_in_")][i]*127.0)
             if out_scale_data.ndim==0:
               out_scale_data=np.repeat(out_scale_data,out_dim)
             out_scale_data=out_scale_data.astype('float32')
